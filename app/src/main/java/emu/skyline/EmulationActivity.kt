@@ -17,6 +17,7 @@ import android.content.pm.ActivityInfo
 import android.content.res.AssetManager
 import android.content.res.Configuration
 import android.content.res.Resources
+import android.graphics.Color
 import android.graphics.PointF
 import android.graphics.drawable.Icon
 import android.hardware.display.DisplayManager
@@ -29,6 +30,7 @@ import android.util.TypedValue
 import android.view.*
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.getSystemService
 import androidx.core.view.isGone
@@ -61,6 +63,7 @@ import emu.skyline.utils.GpuDriverHelper
 import emu.skyline.utils.serializable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.FutureTask
@@ -170,6 +173,7 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
     var fps : Int = 0
     var averageFrametime : Float = 0.0f
     var averageFrametimeDeviation : Float = 0.0f
+    var ramUsage : Long = 0
 
     /**
      * Writes the current performance statistics into [fps], [averageFrametime] and [averageFrametimeDeviation] fields
@@ -338,7 +342,9 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
                 postDelayed(object : Runnable {
                     override fun run() {
                         updatePerformanceStatistics()
-                        text = "$fps FPS\n${"%.1f".format(averageFrametime)}±${"%.2f".format(averageFrametimeDeviation)}ms"
+                        // We read the `VmRSS` value from the kernel
+                        ramUsage = File("/proc/self/statm").readLines()[0].split(' ')[1].toLong() * 4096 / 1000000
+                        text = "$fps FPS • $ramUsage MB"
                         postDelayed(this, 250)
                     }
                 }, 250)
@@ -370,8 +376,10 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
             setOnClickListener { binding.onScreenControllerView.isInvisible = !binding.onScreenControllerView.isInvisible }
         }
 
+        binding.onScreenControllerView.isInvisible = isControllerConnected()
+
         binding.onScreenPauseToggle.apply {
-            isGone = binding.onScreenControllerView.isGone
+            isGone = !emulationSettings.showPauseButton
             setOnClickListener {
                 if (isEmulatorPaused) {
                     resumeEmulator()
@@ -502,15 +510,15 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
                 isGone = binding.onScreenControllerView.isGone
             }
             binding.onScreenPauseToggle.apply {
-                isGone = binding.onScreenControllerView.isGone
+                isGone = !emulationSettings.showPauseButton
             }
         }
     }
 
     /**
-    * Updating the layout depending on type and state of device
-    */
-    private fun updateCurrentLayout(newLayoutInfo: WindowLayoutInfo) {
+     * Updating the layout depending on type and state of device
+     */
+    private fun updateCurrentLayout(newLayoutInfo : WindowLayoutInfo) {
         if (!emulationSettings.enableFoldableLayout) return
         val isFolding = (newLayoutInfo.displayFeatures.find { it is FoldingFeature } as? FoldingFeature)?.let {
             if (it.isSeparating) {
@@ -635,6 +643,21 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
             }
     }
 
+    private fun isControllerConnected() : Boolean {
+        val deviceIds = InputDevice.getDeviceIds()
+
+        deviceIds.forEach { deviceId ->
+            InputDevice.getDevice(deviceId).apply {
+                // Verify that the device has gamepad buttons, control sticks, or both.
+                if (sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK) {
+                    // This device is a game controller.
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     override fun dispatchKeyEvent(event : KeyEvent) : Boolean {
         return if (inputHandler.handleKeyEvent(event)) true else super.dispatchKeyEvent(event)
     }
@@ -753,6 +776,21 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
     fun getVersionCode() : Int {
         val (major, minor, patch) = BuildConfig.VERSION_NAME.split('-')[0].split('.').map { it.toUInt() }
         return ((major shl 22) or (minor shl 12) or (patch)).toInt()
+    }
+
+    @Suppress("unused")
+    fun reportCrash() {
+        if (BuildConfig.BUILD_TYPE != "release")
+            return
+        runOnUiThread {
+            MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.game_crash))
+                .setMessage(getString(R.string.game_crash_message))
+                .setPositiveButton(getString(android.R.string.ok)) { _, _ ->
+                    shouldFinish = true
+                    returnFromEmulation()
+                }.show()
+        }
     }
 
     private val insetsOrMarginHandler = View.OnApplyWindowInsetsListener { view, insets ->
