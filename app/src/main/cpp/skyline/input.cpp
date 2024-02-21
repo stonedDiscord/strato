@@ -17,11 +17,10 @@ namespace skyline::input {
 
     void Input::UpdateThread() {
         if (int result{pthread_setname_np(pthread_self(), "Sky-Input")})
-            Logger::Warn("Failed to set the thread name: {}", strerror(result));
+            LOGW("Failed to set the thread name: {}", strerror(result));
+        AsyncLogger::UpdateTag();
 
         try {
-            signal::SetSignalHandler({SIGINT, SIGILL, SIGTRAP, SIGBUS, SIGFPE, SIGSEGV}, signal::ExceptionalSignalHandler);
-
             struct UpdateCallback {
                 std::chrono::milliseconds period;
                 std::chrono::steady_clock::time_point next;
@@ -61,13 +60,13 @@ namespace skyline::input {
                 std::this_thread::sleep_until(next);
             }
         } catch (const signal::SignalException &e) {
-            Logger::Error("{}\nStack Trace:{}", e.what(), state.loader->GetStackTrace(e.frames));
+            LOGE("{}\nStack Trace:{}", e.what(), state.loader->GetStackTrace(e.frames));
             if (state.process)
                 state.process->Kill(false);
             else
                 std::rethrow_exception(std::current_exception());
         } catch (const std::exception &e) {
-            Logger::Error(e.what());
+            LOGE("{}", e.what());
             if (state.process)
                 state.process->Kill(false);
             else

@@ -29,7 +29,7 @@ namespace skyline::service::am {
         libraryAppletLaunchableEvent->Signal();
 
         KHandle handle{state.process->InsertItem(libraryAppletLaunchableEvent)};
-        Logger::Debug("Library Applet Launchable Event Handle: 0x{:X}", handle);
+        LOGD("Library Applet Launchable Event Handle: 0x{:X}", handle);
 
         response.copyHandles.push_back(handle);
         return {};
@@ -65,19 +65,48 @@ namespace skyline::service::am {
 
     Result ISelfController::CreateManagedDisplayLayer(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         auto layerId{hosbinder->CreateLayer(hosbinder::DisplayId::Default)};
-        Logger::Debug("Creating Managed Layer #{} on 'Default' Display", layerId);
+        LOGD("Creating Managed Layer #{} on 'Default' Display", layerId);
         response.Push(layerId);
         return {};
     }
 
     Result ISelfController::SetIdleTimeDetectionExtension(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         idleTimeDetectionExtension = request.Pop<u32>();
-        Logger::Debug("Setting Idle Time Detection Extension: 0x{:X}", idleTimeDetectionExtension);
+        LOGD("Setting Idle Time Detection Extension: 0x{:X}", idleTimeDetectionExtension);
         return {};
     }
 
     Result ISelfController::GetIdleTimeDetectionExtension(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         response.Push<u32>(idleTimeDetectionExtension);
+        return {};
+    }
+
+    Result ISelfController::ReportUserIsActive(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        return {};
+    }
+
+    Result ISelfController::IsIlluminanceAvailable(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        response.Push<u8>(true);
+
+        return {};
+    }
+
+    Result ISelfController::SetAutoSleepDisabled(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        autoSleepDisabled = request.Pop<u8>();
+        return {};
+    }
+
+    Result ISelfController::IsAutoSleepDisabled(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        response.Push<u8>(autoSleepDisabled);
+        return {};
+    }
+
+    Result ISelfController::GetCurrentIlluminanceEx(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        // Values based in Ryujinx
+        // https://github.com/Ryujinx/Ryujinx/blob/773e239db7ceb2c55aa15f9787add4430edcdfcf/src/Ryujinx.HLE/HOS/Services/Am/AppletAE/AllSystemAppletProxiesService/SystemAppletProxy/ISelfController.cs#L342
+        response.Push<u32>(1);
+        response.Push<float>(10000.0);
+
         return {};
     }
 
@@ -89,7 +118,7 @@ namespace skyline::service::am {
 
     Result ISelfController::GetAccumulatedSuspendedTickChangedEvent(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         auto handle{state.process->InsertItem(accumulatedSuspendedTickChangedEvent)};
-        Logger::Debug("Accumulated Suspended Tick Event Handle: 0x{:X}", handle);
+        LOGD("Accumulated Suspended Tick Event Handle: 0x{:X}", handle);
 
         response.copyHandles.push_back(handle);
         return {};
@@ -97,7 +126,7 @@ namespace skyline::service::am {
 
     Result ISelfController::SetAlbumImageTakenNotificationEnabled(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         auto albumImageTakenNotificationEnabled{request.Pop<u8>()};;
-        Logger::Debug("Setting Album Image Taken Notification Enabled: {}", albumImageTakenNotificationEnabled);
+        LOGD("Setting Album Image Taken Notification Enabled: {}", albumImageTakenNotificationEnabled);
         return {};
     }
 

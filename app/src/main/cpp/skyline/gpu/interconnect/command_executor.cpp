@@ -100,7 +100,7 @@ namespace skyline::gpu::interconnect {
     }
 
     void CommandRecordThread::ProcessSlot(Slot *slot) {
-        TRACE_EVENT_FMT("gpu", "ProcessSlot: 0x{:X}, execution: {}", slot, u64{slot->executionTag});
+        TRACE_EVENT_FMT("gpu", "ProcessSlot: {}, execution: {}", fmt::ptr(slot), u64{slot->executionTag});
         auto &gpu{*state.gpu};
 
         vk::RenderPass lRenderPass;
@@ -178,17 +178,16 @@ namespace skyline::gpu::interconnect {
         if (void *mod{dlopen("libVkLayer_GLES_RenderDoc.so", RTLD_NOW | RTLD_NOLOAD)}) {
             auto *pfnGetApi{reinterpret_cast<pRENDERDOC_GetAPI>(dlsym(mod, "RENDERDOC_GetAPI"))};
             if (int ret{pfnGetApi(eRENDERDOC_API_Version_1_4_2, (void **)&renderDocApi)}; ret != 1)
-                Logger::Warn("Failed to intialise RenderDoc API: {}", ret);
+                LOGW("Failed to intialise RenderDoc API: {}", ret);
         }
 
         outgoing.Push(&slots.emplace_back(gpu));
 
         if (int result{pthread_setname_np(pthread_self(), "Sky-CmdRecord")})
-            Logger::Warn("Failed to set the thread name: {}", strerror(result));
+            LOGW("Failed to set the thread name: {}", strerror(result));
+        AsyncLogger::UpdateTag();
 
         try {
-            signal::SetSignalHandler({SIGINT, SIGILL, SIGTRAP, SIGBUS, SIGFPE, SIGSEGV}, signal::ExceptionalSignalHandler);
-
             incoming.Process([this, renderDocApi, &gpu](Slot *slot) {
                 idle = false;
                 VkInstance instance{*gpu.vkInstance};
@@ -211,13 +210,13 @@ namespace skyline::gpu::interconnect {
                 idle = true;
             }, [] {});
         } catch (const signal::SignalException &e) {
-            Logger::Error("{}\nStack Trace:{}", e.what(), state.loader->GetStackTrace(e.frames));
+            LOGE("{}\nStack Trace:{}", e.what(), state.loader->GetStackTrace(e.frames));
             if (state.process)
                 state.process->Kill(false);
             else
                 std::rethrow_exception(std::current_exception());
         } catch (const std::exception &e) {
-            Logger::Error(e.what());
+            LOGE("{}", e.what());
             if (state.process)
                 state.process->Kill(false);
             else
@@ -243,8 +242,6 @@ namespace skyline::gpu::interconnect {
     }
 
     void ExecutionWaiterThread::Run() {
-        signal::SetSignalHandler({SIGSEGV}, nce::NCE::HostSignalHandler); // We may access NCE trapped memory
-
         // Enable turbo clocks to begin with if requested
         if (*state.settings->forceMaxGpuClocks)
             adrenotools_set_turbo(true);
@@ -302,7 +299,7 @@ namespace skyline::gpu::interconnect {
             u32 curCheckpoint{state.gpu->debugTracingBuffer.as<u32>()};
 
             if ((iteration % 1024) == 0)
-                Logger::Info("Current Checkpoint: {}", curCheckpoint);
+                LOGI("Current Checkpoint: {}", curCheckpoint);
 
             while (prevCheckpoint != curCheckpoint) {
                 // Make sure to report an event for every checkpoint inbetween the previous and current values, to ensure the perfetto trace is consistent

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright © 2020 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
+#include <fstream>
 #include <asm-generic/unistd.h>
 #include <fcntl.h>
 #include "memory.h"
@@ -115,7 +116,7 @@ namespace skyline::kernel {
 
         if (needsReprotection)
             if (mprotect(newDesc.first, newDesc.second.size, !isUnmapping ? PROT_READ | PROT_WRITE | PROT_EXEC : PROT_NONE)) [[unlikely]]
-                Logger::Warn("Reprotection failed: {}", strerror(errno));
+                LOGW("Reprotection failed: {}", strerror(errno));
     }
 
     void MemoryManager::ForeachChunkInRange(span<u8> memory, auto editCallback) {
@@ -229,7 +230,7 @@ namespace skyline::kernel {
             code = codeBase36Bit = AllocateMappedRange(0x78000000, RegionAlignment, 0x8000000, KgslReservedRegionSize, false);
 
             if ((reinterpret_cast<u64>(base.data()) + baseSize) > (1ULL << 36)) {
-                Logger::Warn("Couldn't fit regions into 36 bit AS! Resizing AS to 39 bits!");
+                LOGW("Couldn't fit regions into 36 bit AS! Resizing AS to 39 bits!");
                 addressSpace = span<u8>{reinterpret_cast<u8 *>(0), 1ULL << 39};
             }
         }
@@ -245,7 +246,7 @@ namespace skyline::kernel {
 
     void MemoryManager::InitializeRegions(span<u8> codeRegion) {
         if (!util::IsAligned(codeRegion.data(), RegionAlignment)) [[unlikely]]
-            throw exception("Non-aligned code region was used to initialize regions: 0x{:X} - 0x{:X}", codeRegion.data(), codeRegion.end().base());
+            throw exception("Non-aligned code region was used to initialize regions: {} - {}", fmt::ptr(codeRegion.data()), fmt::ptr(codeRegion.end().base()));
 
         switch (addressSpaceType) {
             case memory::AddressSpaceType::AddressSpace36Bit: {
@@ -292,20 +293,32 @@ namespace skyline::kernel {
         if (codeRegion.size() > code.size()) [[unlikely]]
             throw exception("Code region ({}) is smaller than mapped code size ({})", code.size(), codeRegion.size());
 
-        Logger::Debug("Region Map:\nVMM Base: 0x{:X}\nCode Region: 0x{:X} - 0x{:X} (Size: 0x{:X})\nAlias Region: 0x{:X} - 0x{:X} (Size: 0x{:X})\nHeap Region: 0x{:X} - 0x{:X} (Size: 0x{:X})\nStack Region: 0x{:X} - 0x{:X} (Size: 0x{:X})\nTLS/IO Region: 0x{:X} - 0x{:X} (Size: 0x{:X})", code.data(), code.data(), code.end().base(), code.size(), alias.data(), alias.end().base(), alias.size(), heap.data(), heap.end().base(), heap.size(), stack.data(), stack.end().base(), stack.size(), tlsIo.data(), tlsIo.end().base(), tlsIo.size());
+        LOGD("Region Map:\n"
+             "VMM Base: {}\n"
+             "Code Region: {} - {} (Size: 0x{:X})\n"
+             "Alias Region: {} - {} (Size: 0x{:X})\n"
+             "Heap Region: {} - {} (Size: 0x{:X})\n"
+             "Stack Region: {} - {} (Size: 0x{:X})\n"
+             "TLS/IO Region: {} - {} (Size: 0x{:X})",
+             fmt::ptr(code.data()),
+             fmt::ptr(code.data()), fmt::ptr(code.end().base()), code.size(),
+             fmt::ptr(alias.data()), fmt::ptr(alias.end().base()), alias.size(),
+             fmt::ptr(heap.data()), fmt::ptr(heap.end().base()), heap.size(),
+             fmt::ptr(stack.data()), fmt::ptr(stack.end().base()), stack.size(),
+             fmt::ptr(tlsIo.data()), fmt::ptr(tlsIo.end().base()), tlsIo.size());
     }
 
     span<u8> MemoryManager::CreateMirror(span<u8> mapping) {
         if (!base.contains(mapping)) [[unlikely]]
-            throw exception("Mapping is outside of VMM base: 0x{:X} - 0x{:X}", mapping.data(), mapping.end().base());
+            throw exception("Mapping is outside of VMM base: {} - {}", fmt::ptr(mapping.data()), fmt::ptr(mapping.end().base()));
 
         auto offset{static_cast<size_t>(mapping.data() - base.data())};
         if (!util::IsPageAligned(offset) || !util::IsPageAligned(mapping.size())) [[unlikely]]
-            throw exception("Mapping is not aligned to a page: 0x{:X}-0x{:X} (0x{:X})", mapping.data(), mapping.end().base(), offset);
+            throw exception("Mapping is not aligned to a page: {} - {} (0x{:X})", fmt::ptr(mapping.data()), fmt::ptr(mapping.end().base()), offset);
 
         auto mirror{mremap(mapping.data(), 0, mapping.size(), MREMAP_MAYMOVE)};
         if (mirror == MAP_FAILED) [[unlikely]]
-            throw exception("Failed to create mirror mapping at 0x{:X}-0x{:X} (0x{:X}): {}", mapping.data(), mapping.end().base(), offset, strerror(errno));
+            throw exception("Failed to create mirror mapping at {} - {} (0x{:X}): {}", fmt::ptr(mapping.data()), fmt::ptr(mapping.end().base()), offset, strerror(errno));
 
         mprotect(mirror, mapping.size(), PROT_READ | PROT_WRITE);
 
@@ -324,15 +337,15 @@ namespace skyline::kernel {
         size_t mirrorOffset{};
         for (const auto &region : regions) {
             if (!base.contains(region)) [[unlikely]]
-                throw exception("Mapping is outside of VMM base: 0x{:X} - 0x{:X}", region.data(), region.end().base());
+                throw exception("Mapping is outside of VMM base: {} - {}", fmt::ptr(region.data()), fmt::ptr(region.end().base()));
 
             auto offset{static_cast<size_t>(region.data() - base.data())};
             if (!util::IsPageAligned(offset) || !util::IsPageAligned(region.size())) [[unlikely]]
-                throw exception("Mapping is not aligned to a page: 0x{:X}-0x{:X} (0x{:X})", region.data(), region.end().base(), offset);
+                throw exception("Mapping is not aligned to a page: {} - {} (0x{:X})", fmt::ptr(region.data()), fmt::ptr(region.end().base()), offset);
 
             auto mirror{mremap(region.data(), 0, region.size(), MREMAP_FIXED | MREMAP_MAYMOVE, reinterpret_cast<u8 *>(mirrorBase) + mirrorOffset)};
             if (mirror == MAP_FAILED) [[unlikely]]
-                throw exception("Failed to create mirror mapping at 0x{:X}-0x{:X} (0x{:X}): {}", region.data(), region.end().base(), offset, strerror(errno));
+                throw exception("Failed to create mirror mapping at {} - {} (0x{:X}): {}", fmt::ptr(region.data()), fmt::ptr(region.end().base()), offset, strerror(errno));
 
             mprotect(mirror, region.size(), PROT_READ | PROT_WRITE);
 
@@ -498,7 +511,7 @@ namespace skyline::kernel {
 
         if (alignedStart < alignedEnd) [[likely]]
             if (madvise(alignedStart, static_cast<size_t>(alignedEnd - alignedStart), MADV_REMOVE) == -1) [[unlikely]]
-                Logger::Error("Failed to free memory: {}", strerror(errno));
+                LOGE("Failed to free memory: {}", strerror(errno));
     }
 
     void MemoryManager::SvcMapMemory(span<u8> source, span<u8> destination) {
@@ -527,7 +540,7 @@ namespace skyline::kernel {
         auto dstChunk = chunks.lower_bound(destination.data());
         if (destination.data() < dstChunk->first)
             --dstChunk;
-        while (dstChunk->second.state.value == memory::states::Unmapped)
+        while (dstChunk->second.state == memory::states::Unmapped)
             ++dstChunk;
 
         if ((destination.data() + destination.size()) > dstChunk->first) [[likely]] {

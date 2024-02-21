@@ -17,14 +17,14 @@ namespace skyline::service::nvdrv::device::nvhost {
     }
 
     PosixResult Host1xChannel::SetNvmapFd(In<FileDescriptor> fd) {
-        Logger::Debug("fd: {}", fd);
+        LOGD("fd: {}", fd);
         return PosixResult::Success;
     }
 
     PosixResult Host1xChannel::Submit(span<SubmitCmdBuf> cmdBufs,
                                       span<SubmitReloc> relocs, span<u32> relocShifts,
                                       span<SubmitSyncpointIncr> syncpointIncrs, span<u32> fenceThresholds) {
-        Logger::Debug("numCmdBufs: {}, numRelocs: {}, numSyncpointIncrs: {}, numFenceThresholds: {}",
+        LOGD("numCmdBufs: {}, numRelocs: {}, numSyncpointIncrs: {}, numFenceThresholds: {}",
                             cmdBufs.size(), relocs.size(), syncpointIncrs.size(), fenceThresholds.size());
 
         if (fenceThresholds.size() > syncpointIncrs.size())
@@ -54,7 +54,7 @@ namespace skyline::service::nvdrv::device::nvhost {
                 throw exception("Invalid handle passed for a command buffer!");
 
             u64 gatherAddress{handleDesc->address + cmdBuf.offset};
-            Logger::Debug("Submit gather, CPU address: 0x{:X}, words: 0x{:X}", gatherAddress, cmdBuf.words);
+            LOGD("Submit gather, CPU address: 0x{:X}, words: 0x{:X}", gatherAddress, cmdBuf.words);
 
             span gather(reinterpret_cast<u32 *>(gatherAddress), cmdBuf.words);
             // Skip submitting the cmdbufs as no functionality is implemented
@@ -65,7 +65,7 @@ namespace skyline::service::nvdrv::device::nvhost {
     }
 
     PosixResult Host1xChannel::GetSyncpoint(In<u32> channelSyncpointIdx, Out<u32> syncpointId) {
-        Logger::Debug("channelSyncpointIdx: {}", channelSyncpointIdx);
+        LOGD("channelSyncpointIdx: {}", channelSyncpointIdx);
 
         if (channelSyncpointIdx > 0)
             throw exception("Multiple channel syncpoints are unimplemented!");
@@ -74,48 +74,50 @@ namespace skyline::service::nvdrv::device::nvhost {
         if (!id)
             throw exception("Requested syncpoint for a channel with none specified!");
 
-        Logger::Debug("syncpointId: {}", id);
+        LOGD("syncpointId: {}", id);
         syncpointId = id;
         return PosixResult::Success;
     }
 
     PosixResult Host1xChannel::GetWaitBase(In<core::ChannelType> pChannelType, Out<u32> waitBase) {
-        Logger::Debug("channelType: {}", static_cast<u32>(pChannelType));
+        LOGD("channelType: {}", static_cast<u32>(pChannelType));
         waitBase = 0;
         return PosixResult::Success;
     }
 
     PosixResult Host1xChannel::SetSubmitTimeout(In<u32> timeout) {
-        Logger::Debug("timeout: {}", timeout);
+        LOGD("timeout: {}", timeout);
         return PosixResult::Success;
     }
 
     PosixResult Host1xChannel::MapBuffer(u8 compressed, span<BufferHandle> handles) {
-        Logger::Debug("compressed: {}", compressed);
+        LOGD("compressed: {}", compressed);
 
         for (auto &bufferHandle : handles) {
             bufferHandle.address = core.nvMap.PinHandle(bufferHandle.handle);
-            Logger::Debug("handle: {}, address: 0x{:X}", bufferHandle.handle, bufferHandle.address);
+            LOGD("handle: {}, address: 0x{:X}", bufferHandle.handle, bufferHandle.address);
         }
 
         return PosixResult::Success;
     }
 
     PosixResult Host1xChannel::UnmapBuffer(u8 compressed, span<BufferHandle> handles) {
-        Logger::Debug("compressed: {}", compressed);
+        LOGD("compressed: {}", compressed);
 
         for (auto &bufferHandle : handles) {
             core.nvMap.UnpinHandle(bufferHandle.handle);
-            Logger::Debug("handle: {}", bufferHandle.handle);
+            LOGD("handle: {}", bufferHandle.handle);
         }
 
         return PosixResult::Success;
     }
+
+// @fmt:off
 #include <services/nvdrv/devices/deserialisation/macro_def.inc>
     static constexpr u32 Host1xChannelMagic{0x00};
     static constexpr u32 GpuChannelMagic{0x48}; //!< Used for SetNvmapFd which is needed in both GPU and host1x channels
 
-    VARIABLE_IOCTL_HANDLER_FUNC(Host1xChannel, ({
+    VARIABLE_IOCTL_HANDLER_FUNC(Host1xChannel,
         IOCTL_CASE_ARGS(IN,    SIZE(0x4), MAGIC(GpuChannelMagic),    FUNC(0x1),
                         SetNvmapFd,       ARGS(In<FileDescriptor>))
         IOCTL_CASE_ARGS(INOUT, SIZE(0x8), MAGIC(Host1xChannelMagic), FUNC(0x2),
@@ -124,7 +126,7 @@ namespace skyline::service::nvdrv::device::nvhost {
                         GetWaitBase,      ARGS(In<core::ChannelType>, Out<u32>))
         IOCTL_CASE_ARGS(IN,    SIZE(0x4), MAGIC(Host1xChannelMagic), FUNC(0x7),
                         SetSubmitTimeout, ARGS(In<u32>))
-    }), ({
+    ,
         VARIABLE_IOCTL_CASE_ARGS(INOUT, MAGIC(Host1xChannelMagic), FUNC(0x1),
                                  Submit,      ARGS(Save<u32, 0>, Save<u32, 1>, Save<u32, 2>, Save<u32, 3>,
                                                    SlotSizeSpan<SubmitCmdBuf, 0>,
@@ -134,6 +136,7 @@ namespace skyline::service::nvdrv::device::nvhost {
                                  MapBuffer,   ARGS(Save<u32, 0>, Pad<u32>, In<u8>, Pad<u8, 3>, SlotSizeSpan<BufferHandle, 0>))
         VARIABLE_IOCTL_CASE_ARGS(INOUT, MAGIC(Host1xChannelMagic), FUNC(0xA),
                                  UnmapBuffer, ARGS(Save<u32, 0>, Pad<u32>, In<u8>, Pad<u8, 3>, SlotSizeSpan<BufferHandle, 0>))
-    }))
+    )
 #include <services/nvdrv/devices/deserialisation/macro_undef.inc>
+// @fmt:on
 }

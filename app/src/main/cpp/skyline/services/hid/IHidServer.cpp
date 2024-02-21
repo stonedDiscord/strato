@@ -74,7 +74,7 @@ namespace skyline::service::hid {
         state.input->npad.styles = styleSet;
         state.input->npad.Update();
 
-        Logger::Debug("Controller Support:\nPro-Controller: {}\nJoy-Con: Handheld: {}, Dual: {}, L: {}, R: {}\nGameCube: {}\nPokeBall: {}\nNES: {}, NES Handheld: {}, SNES: {}", static_cast<bool>(styleSet.proController), static_cast<bool>(styleSet.joyconHandheld), static_cast<bool>(styleSet.joyconDual), static_cast<bool>(styleSet.joyconLeft), static_cast<bool>
+        LOGD("Controller Support:\nPro-Controller: {}\nJoy-Con: Handheld: {}, Dual: {}, L: {}, R: {}\nGameCube: {}\nPokeBall: {}\nNES: {}, NES Handheld: {}, SNES: {}", static_cast<bool>(styleSet.proController), static_cast<bool>(styleSet.joyconHandheld), static_cast<bool>(styleSet.joyconDual), static_cast<bool>(styleSet.joyconLeft), static_cast<bool>
         (styleSet.joyconRight), static_cast<bool>(styleSet.gamecube), static_cast<bool>(styleSet.palma), static_cast<bool>(styleSet.nes), static_cast<bool>(styleSet.nesHandheld), static_cast<bool>(styleSet.snes));
         return {};
     }
@@ -108,7 +108,7 @@ namespace skyline::service::hid {
 
         state.input->npad.at(id).updateEvent->Signal();
 
-        Logger::Debug("Npad {} Style Set Update Event Handle: 0x{:X}", id, handle);
+        LOGD("Npad {} Style Set Update Event Handle: 0x{:X}", id, handle);
         response.copyHandles.push_back(handle);
         return {};
     }
@@ -238,7 +238,7 @@ namespace skyline::service::hid {
         auto &device{state.input->npad.at(handle.id)};
         if (device.type == handle.GetType()) {
             const auto &value{request.Pop<NpadVibrationValue>()};
-            Logger::Debug("Vibration - Handle: 0x{:02X} (0b{:05b}), Vibration: {:.2f}@{:.2f}Hz, {:.2f}@{:.2f}Hz", static_cast<u8>(handle.id), static_cast<u8>(handle.type), value.amplitudeLow, value.frequencyLow, value.amplitudeHigh, value.frequencyHigh);
+            LOGD("Vibration - Handle: 0x{:02X} (0b{:05b}), Vibration: {:.2f}@{:.2f}Hz, {:.2f}@{:.2f}Hz", static_cast<u8>(handle.id), static_cast<u8>(handle.type), value.amplitudeLow, value.frequencyLow, value.amplitudeHigh, value.frequencyHigh);
             device.VibrateSingle(handle.isRight, value);
         }
 
@@ -261,13 +261,13 @@ namespace skyline::service::hid {
             auto &device{state.input->npad.at(handle.id)};
             if (device.type == handle.GetType()) {
                 if (i + 1 != handles.size() && handles[i + 1].id == handle.id && handles[i + 1].isRight && !handle.isRight) {
-                    Logger::Debug("Vibration #{}&{} - Handle: 0x{:02X} (0b{:05b}), Vibration: {:.2f}@{:.2f}Hz, {:.2f}@{:.2f}Hz - {:.2f}@{:.2f}Hz, {:.2f}@{:.2f}Hz", i, i + 1, static_cast<u8>(handle.id), static_cast<u8>(handle.type), values[i].amplitudeLow, values[i].frequencyLow, values[i].amplitudeHigh, values[i].frequencyHigh, values[i + 1].amplitudeLow, values[i + 1].frequencyLow, values[i + 1]
+                    LOGD("Vibration #{}&{} - Handle: 0x{:02X} (0b{:05b}), Vibration: {:.2f}@{:.2f}Hz, {:.2f}@{:.2f}Hz - {:.2f}@{:.2f}Hz, {:.2f}@{:.2f}Hz", i, i + 1, static_cast<u8>(handle.id), static_cast<u8>(handle.type), values[i].amplitudeLow, values[i].frequencyLow, values[i].amplitudeHigh, values[i].frequencyHigh, values[i + 1].amplitudeLow, values[i + 1].frequencyLow, values[i + 1]
                         .amplitudeHigh, values[i + 1].frequencyHigh);
                     device.Vibrate(values[i], values[i + 1]);
                     i++;
                 } else {
                     const auto &value{values[i]};
-                    Logger::Debug("Vibration #{} - Handle: 0x{:02X} (0b{:05b}), Vibration: {:.2f}@{:.2f}Hz, {:.2f}@{:.2f}Hz", i, static_cast<u8>(handle.id), static_cast<u8>(handle.type), value.amplitudeLow, value.frequencyLow, value.amplitudeHigh, value.frequencyHigh);
+                    LOGD("Vibration #{} - Handle: 0x{:02X} (0b{:05b}), Vibration: {:.2f}@{:.2f}Hz, {:.2f}@{:.2f}Hz", i, static_cast<u8>(handle.id), static_cast<u8>(handle.type), value.amplitudeLow, value.frequencyLow, value.amplitudeHigh, value.frequencyHigh);
                     device.VibrateSingle(handle.isRight, value);
                 }
             }
@@ -278,6 +278,35 @@ namespace skyline::service::hid {
 
     Result IHidServer::IsVibrationPermitted(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         response.Push<u8>(0);
+        return {};
+    }
+
+    Result IHidServer::IsVibrationDeviceMounted(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        auto vibrationDeviceHandle{request.Pop<u32>()};
+        auto appletResourceUserId{request.Pop<u64>()};
+
+        response.Push<u8>(true);
+
+        return {};
+    }
+
+    Result IHidServer::ActivateConsoleSixAxisSensor(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        auto appletResourceUserId{request.Pop<u64>()};
+        return {};
+    }
+
+    Result IHidServer::InitializeSevenSixAxisSensor(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        auto appletResourceUserId{request.Pop<u64>()};
+        auto transferMemory1Size{request.Pop<u64>()};
+        auto transferMemory2Size{request.Pop<u64>()};
+        auto transferMemory1Handle{state.process->GetHandle<kernel::type::KTransferMemory>(request.copyHandles.at(0))};
+        auto transferMemory2Handle{state.process->GetHandle<kernel::type::KTransferMemory>(request.copyHandles.at(1))};
+
+        return {};
+    }
+
+    Result IHidServer::ResetSevenSixAxisSensorTimestamp(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        auto appletResourceUserId{request.Pop<u64>()};
         return {};
     }
 

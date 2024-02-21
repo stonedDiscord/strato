@@ -18,11 +18,11 @@ namespace skyline::service::am {
         stateChangeEventHandle = state.process->InsertItem(stateChangeEvent);
         popNormalOutDataEventHandle = state.process->InsertItem(popNormalOutDataEvent);
         popInteractiveOutDataEventHandle = state.process->InsertItem(popInteractiveOutDataEvent);
-        Logger::Debug("Applet accessor for {} ID created with appletMode 0x{:X}", ToString(appletId), appletMode);
+        LOGD("Applet accessor for {} ID created with appletMode 0x{:X}", ToString(appletId), appletMode);
     }
 
     Result ILibraryAppletAccessor::GetAppletStateChangedEvent(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
-        Logger::Debug("Applet State Change Event Handle: 0x{:X}", stateChangeEventHandle);
+        LOGD("Applet State Change Event Handle: 0x{:X}", stateChangeEventHandle);
         response.copyHandles.push_back(stateChangeEventHandle);
         return {};
     }
@@ -68,6 +68,14 @@ namespace skyline::service::am {
 
     Result ILibraryAppletAccessor::GetPopInteractiveOutDataEvent(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         response.copyHandles.push_back(popInteractiveOutDataEventHandle);
+        return {};
+    }
+
+    Result ILibraryAppletAccessor::GetIndirectLayerConsumerHandle(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        auto appletResourceUserId{request.Pop<u64>()};
+
+        u64 indirectLayerConsumerHandle{1};
+        response.Push<u64>(indirectLayerConsumerHandle);
         return {};
     }
 }

@@ -10,22 +10,21 @@
 namespace skyline::gpu {
     void CommandScheduler::WaiterThread() {
         if (int result{pthread_setname_np(pthread_self(), "Sky-CycleWaiter")})
-            Logger::Warn("Failed to set the thread name: {}", strerror(result));
+            LOGW("Failed to set the thread name: {}", strerror(result));
+        AsyncLogger::UpdateTag();
 
         try {
-            signal::SetSignalHandler({SIGINT, SIGILL, SIGTRAP, SIGBUS, SIGFPE, SIGSEGV}, signal::ExceptionalSignalHandler);
-
             cycleQueue.Process([](const std::shared_ptr<FenceCycle> &cycle) {
                 cycle->Wait(true);
             }, [] {});
         } catch (const signal::SignalException &e) {
-            Logger::Error("{}\nStack Trace:{}", e.what(), state.loader->GetStackTrace(e.frames));
+            LOGE("{}\nStack Trace:{}", e.what(), state.loader->GetStackTrace(e.frames));
             if (state.process)
                 state.process->Kill(false);
             else
                 std::rethrow_exception(std::current_exception());
         } catch (const std::exception &e) {
-            Logger::Error(e.what());
+            LOGE("{}", e.what());
             if (state.process)
                 state.process->Kill(false);
             else

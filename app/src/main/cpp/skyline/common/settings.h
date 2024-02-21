@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <mutex>
 #include "language.h"
+#include "logger/logger.h"
 
 namespace skyline {
     /**
@@ -89,6 +91,7 @@ namespace skyline {
         Setting<bool> isAudioOutputDisabled; //!< Disables audio output
 
         // Debug
+        Setting<AsyncLogger::LogLevel> logLevel; //!< The log level
         Setting<bool> validationLayer; //!< If the vulkan validation layer is enabled
 
         Settings() = default;

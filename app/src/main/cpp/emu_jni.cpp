@@ -18,6 +18,7 @@
 #include "skyline/audio.h"
 #include "skyline/input.h"
 #include "skyline/kernel/types/KProcess.h"
+#include "skyline/logger/logger.h"
 
 jint Fps; //!< An approximation of the amount of frames being submitted every second
 jfloat AverageFrametimeMs; //!< The average time it takes for a frame to be rendered and presented in milliseconds
@@ -54,18 +55,7 @@ static std::string GetTimeZoneName() {
     return "GMT";
 }
 
-extern "C" JNIEXPORT void Java_emu_skyline_SkylineApplication_initializeLog(
-    JNIEnv *env,
-    jobject,
-    jstring publicAppFilesPathJstring,
-    jint logLevel
-) {
-    skyline::JniString publicAppFilesPath(env, publicAppFilesPathJstring);
-    skyline::Logger::configLevel = static_cast<skyline::Logger::LogLevel>(logLevel);
-    skyline::Logger::LoaderContext.Initialize(publicAppFilesPath + "logs/loader.log");
-}
-
-extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_executeApplication(
+extern "C" JNIEXPORT void Java_org_stratoemu_strato_EmulationActivity_executeApplication(
     JNIEnv *env,
     jobject instance,
     jstring romUriJstring,
@@ -88,7 +78,8 @@ extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_executeApplication(
     std::shared_ptr<skyline::Settings> settings{std::make_shared<skyline::AndroidSettings>(env, settingsInstance)};
 
     skyline::JniString publicAppFilesPath(env, publicAppFilesPathJstring);
-    skyline::Logger::EmulationContext.Initialize(publicAppFilesPath + "logs/emulation.log");
+
+    skyline::AsyncLogger::Initialize(*settings->logLevel, publicAppFilesPath + "logs/emulation.log");
 
     auto start{std::chrono::steady_clock::now()};
 
@@ -103,6 +94,8 @@ extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_executeApplication(
         skyline::JniString nativeLibraryPath(env, nativeLibraryPathJstring);
         skyline::JniString privateAppFilesPath{env, privateAppFilesPathJstring};
 
+        // Host signal handlers need to be set before NCE is initialized, this is the only place where we can do that
+        skyline::signal::SetHostSignalHandler({SIGINT, SIGILL, SIGTRAP, SIGBUS, SIGFPE, SIGSEGV}, skyline::signal::ExceptionalSignalHandler);
         auto os{std::make_shared<skyline::kernel::OS>(
             jvmManager,
             settings,
@@ -119,15 +112,15 @@ extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_executeApplication(
         SettingsWeak = settings;
         jvmManager->InitializeControllers();
 
-        skyline::Logger::DebugNoPrefix("Launching ROM {}", skyline::JniString(env, romUriJstring));
+        LOGDNF("Launching ROM {}", skyline::JniString(env, romUriJstring));
 
         os->Execute(romFd, static_cast<skyline::loader::RomFormat>(romType));
     } catch (std::exception &e) {
-        skyline::Logger::ErrorNoPrefix("An uncaught exception has occurred: {}", e.what());
+        LOGENF("An uncaught exception has occurred: {}", e.what());
     } catch (const skyline::signal::SignalException &e) {
-        skyline::Logger::ErrorNoPrefix("An uncaught exception has occurred: {}", e.what());
+        LOGENF("An uncaught signal exception has occurred: {}", e.what());
     } catch (...) {
-        skyline::Logger::ErrorNoPrefix("An unknown uncaught exception has occurred");
+        LOGENF("An unknown uncaught exception has occurred");
     }
 
     perfetto::TrackEvent::Flush();
@@ -135,13 +128,13 @@ extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_executeApplication(
     InputWeak.reset();
 
     auto end{std::chrono::steady_clock::now()};
-    skyline::Logger::Write(skyline::Logger::LogLevel::Info, fmt::format("Emulation has ended in {}ms", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()));
+    LOGINF("Emulation has ended in {}ms", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
 
-    skyline::Logger::EmulationContext.Finalize();
+    skyline::AsyncLogger::Finalize(true);
     close(romFd);
 }
 
-extern "C" JNIEXPORT jboolean Java_emu_skyline_EmulationActivity_stopEmulation(JNIEnv *, jobject, jboolean join) {
+extern "C" JNIEXPORT jboolean Java_org_stratoemu_strato_EmulationActivity_stopEmulation(JNIEnv *, jobject, jboolean join) {
     auto os{OsWeak.lock()};
     if (!os)
         return false;
@@ -152,7 +145,7 @@ extern "C" JNIEXPORT jboolean Java_emu_skyline_EmulationActivity_stopEmulation(J
     return true;
 }
 
-extern "C" JNIEXPORT jboolean Java_emu_skyline_EmulationActivity_setSurface(JNIEnv *, jobject, jobject surface) {
+extern "C" JNIEXPORT jboolean Java_org_stratoemu_strato_EmulationActivity_setSurface(JNIEnv *, jobject, jobject surface) {
     auto gpu{GpuWeak.lock()};
     if (!gpu)
         return false;
@@ -160,7 +153,7 @@ extern "C" JNIEXPORT jboolean Java_emu_skyline_EmulationActivity_setSurface(JNIE
     return true;
 }
 
-extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_changeAudioStatus(JNIEnv *, jobject, jboolean play) {
+extern "C" JNIEXPORT void Java_org_stratoemu_strato_EmulationActivity_changeAudioStatus(JNIEnv *, jobject, jboolean play) {
     auto audio{AudioWeak.lock()};
     if (audio)
         if (play)
@@ -169,7 +162,7 @@ extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_changeAudioStatus(J
             audio->Pause();
 }
 
-extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_updatePerformanceStatistics(JNIEnv *env, jobject thiz) {
+extern "C" JNIEXPORT void Java_org_stratoemu_strato_EmulationActivity_updatePerformanceStatistics(JNIEnv *env, jobject thiz) {
     static jclass clazz{};
     if (!clazz)
         clazz = env->GetObjectClass(thiz);
@@ -190,17 +183,17 @@ extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_updatePerformanceSt
     env->SetFloatField(thiz, averageFrametimeDeviationField, AverageFrametimeDeviationMs);
 }
 
-extern "C" JNIEXPORT void JNICALL Java_emu_skyline_input_InputHandler_00024Companion_setController(JNIEnv *, jobject, jint index, jint type, jint partnerIndex) {
+extern "C" JNIEXPORT void JNICALL Java_org_stratoemu_strato_input_InputHandler_00024Companion_setController(JNIEnv *, jobject, jint index, jint type, jint partnerIndex) {
     auto input{InputWeak.lock()};
     std::lock_guard guard(input->npad.mutex);
     input->npad.controllers[static_cast<size_t>(index)] = skyline::input::GuestController{static_cast<skyline::input::NpadControllerType>(type), static_cast<skyline::i8>(partnerIndex)};
 }
 
-extern "C" JNIEXPORT void JNICALL Java_emu_skyline_input_InputHandler_00024Companion_updateControllers(JNIEnv *, jobject) {
+extern "C" JNIEXPORT void JNICALL Java_org_stratoemu_strato_input_InputHandler_00024Companion_updateControllers(JNIEnv *, jobject) {
     InputWeak.lock()->npad.Update();
 }
 
-extern "C" JNIEXPORT void JNICALL Java_emu_skyline_input_InputHandler_00024Companion_setButtonState(JNIEnv *, jobject, jint index, jlong mask, jboolean pressed) {
+extern "C" JNIEXPORT void JNICALL Java_org_stratoemu_strato_input_InputHandler_00024Companion_setButtonState(JNIEnv *, jobject, jint index, jlong mask, jboolean pressed) {
     auto input{InputWeak.lock()};
     if (!input)
         return; // We don't mind if we miss button updates while input hasn't been initialized
@@ -209,7 +202,7 @@ extern "C" JNIEXPORT void JNICALL Java_emu_skyline_input_InputHandler_00024Compa
         device->SetButtonState(skyline::input::NpadButton{.raw = static_cast<skyline::u64>(mask)}, pressed);
 }
 
-extern "C" JNIEXPORT void JNICALL Java_emu_skyline_input_InputHandler_00024Companion_setAxisValue(JNIEnv *, jobject, jint index, jint axis, jint value) {
+extern "C" JNIEXPORT void JNICALL Java_org_stratoemu_strato_input_InputHandler_00024Companion_setAxisValue(JNIEnv *, jobject, jint index, jint axis, jint value) {
     auto input{InputWeak.lock()};
     if (!input)
         return; // We don't mind if we miss axis updates while input hasn't been initialized
@@ -218,7 +211,7 @@ extern "C" JNIEXPORT void JNICALL Java_emu_skyline_input_InputHandler_00024Compa
         device->SetAxisValue(static_cast<skyline::input::NpadAxisId>(axis), value);
 }
 
-extern "C" JNIEXPORT void JNICALL Java_emu_skyline_input_InputHandler_00024Companion_setMotionState(JNIEnv *env, jobject, jint index, jint motionId, jobject value) {
+extern "C" JNIEXPORT void JNICALL Java_org_stratoemu_strato_input_InputHandler_00024Companion_setMotionState(JNIEnv *env, jobject, jint index, jint motionId, jobject value) {
     auto input{InputWeak.lock()};
     if (!input)
         return; // We don't mind if we miss motion updates while input hasn't been initialized
@@ -230,7 +223,7 @@ extern "C" JNIEXPORT void JNICALL Java_emu_skyline_input_InputHandler_00024Compa
         device->SetMotionValue(static_cast<skyline::input::MotionId>(motionId), motionValue);
 }
 
-extern "C" JNIEXPORT void JNICALL Java_emu_skyline_input_InputHandler_00024Companion_setTouchState(JNIEnv *env, jobject, jintArray pointsJni) {
+extern "C" JNIEXPORT void JNICALL Java_org_stratoemu_strato_input_InputHandler_00024Companion_setTouchState(JNIEnv *env, jobject, jintArray pointsJni) {
     using Point = skyline::input::TouchScreenPoint;
 
     auto input{InputWeak.lock()};
@@ -244,13 +237,9 @@ extern "C" JNIEXPORT void JNICALL Java_emu_skyline_input_InputHandler_00024Compa
     env->ReleaseIntArrayElements(pointsJni, reinterpret_cast<jint *>(points.data()), JNI_ABORT);
 }
 
-extern "C" JNIEXPORT void JNICALL Java_emu_skyline_settings_NativeSettings_updateNative(JNIEnv *env, jobject) {
+extern "C" JNIEXPORT void JNICALL Java_org_stratoemu_strato_settings_NativeSettings_updateNative(JNIEnv *env, jobject) {
     auto settings{SettingsWeak.lock()};
     if (!settings)
         return; // We don't mind if we miss settings updates while settings haven't been initialized
     settings->Update();
-}
-
-extern "C" JNIEXPORT void JNICALL Java_emu_skyline_settings_NativeSettings_00024Companion_setLogLevel(JNIEnv *, jobject, jint logLevel) {
-    skyline::Logger::configLevel = static_cast<skyline::Logger::LogLevel>(logLevel);
 }

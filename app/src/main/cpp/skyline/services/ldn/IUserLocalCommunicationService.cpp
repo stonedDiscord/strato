@@ -16,7 +16,7 @@ namespace skyline::service::ldn {
 
     Result IUserLocalCommunicationService::GetNetworkInfo(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         if (request.outputBuf.at(0).size() != sizeof(NetworkInfo)) {
-            Logger::Error("Invalid input");
+            LOGE("Invalid input");
             return result::InvalidInput;
         }
 
@@ -48,7 +48,7 @@ namespace skyline::service::ldn {
 
     Result IUserLocalCommunicationService::AttachStateChangeEvent(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         auto handle{state.process->InsertItem(event)};
-        Logger::Debug("LDN State Change Event Handle: 0x{:X}", handle);
+        LOGD("LDN State Change Event Handle: 0x{:X}", handle);
         response.copyHandles.push_back(handle);
         return {};
     }

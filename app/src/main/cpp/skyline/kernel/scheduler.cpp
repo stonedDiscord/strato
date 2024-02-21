@@ -10,24 +10,28 @@
 namespace skyline::kernel {
     Scheduler::CoreContext::CoreContext(u8 id, i8 preemptionPriority) : id(id), preemptionPriority(preemptionPriority) {}
 
-    Scheduler::Scheduler(const DeviceState &state) : state(state) {}
+    Scheduler::Scheduler(const DeviceState &state) : state(state) {
+        // Don't restart syscalls: we want futexes to fail and their predicates rechecked
+        signal::SetGuestSignalHandler({Scheduler::YieldSignal, Scheduler::PreemptionSignal}, Scheduler::GuestSignalHandler, false);
+        signal::SetHostSignalHandler({Scheduler::YieldSignal, Scheduler::PreemptionSignal}, Scheduler::HostSignalHandler, false);
+    }
 
-    void Scheduler::SignalHandler(int signal, siginfo *info, ucontext *ctx, void **tls) {
-        if (*tls) {
-            TRACE_EVENT_END("guest");
-            {
-                TRACE_EVENT_FMT("scheduler", "{} Signal", signal == PreemptionSignal ? "Preemption" : "Yield");
-                const auto &state{*reinterpret_cast<nce::ThreadContext *>(*tls)->state};
-                if (signal == PreemptionSignal)
-                    state.thread->isPreempted = false;
-                state.scheduler->Rotate(false);
-                YieldPending = false;
-                state.scheduler->WaitSchedule();
-            }
-            TRACE_EVENT_BEGIN("guest", "Guest");
-        } else {
-            YieldPending = true;
+    void Scheduler::GuestSignalHandler(int signal, siginfo *info, ucontext *ctx, void **tls) {
+        TRACE_EVENT_END("guest");
+        {
+            TRACE_EVENT_FMT("scheduler", "{} Signal", signal == PreemptionSignal ? "Preemption" : "Yield");
+            const auto &state{*reinterpret_cast<nce::ThreadContext *>(*tls)->state};
+            if (signal == PreemptionSignal)
+                state.thread->isPreempted = false;
+            state.scheduler->Rotate(false);
+            YieldPending = false;
+            state.scheduler->WaitSchedule();
         }
+        TRACE_EVENT_BEGIN("guest", "Guest");
+    }
+
+    void Scheduler::HostSignalHandler(int signal, siginfo *info, ucontext *ctx) {
+        YieldPending = true;
     }
 
     Scheduler::CoreContext &Scheduler::GetOptimalCoreForThread(const std::shared_ptr<type::KThread> &thread) {
@@ -73,14 +77,14 @@ namespace skyline::kernel {
             }
 
             if (optimalCore != currentCore)
-                Logger::Debug("Load Balancing T{}: C{} -> C{}", thread->id, currentCore->id, optimalCore->id);
+                LOGD("Load Balancing T{}: C{} -> C{}", thread->id, currentCore->id, optimalCore->id);
             else
-                Logger::Debug("Load Balancing T{}: C{} (Late)", thread->id, currentCore->id);
+                LOGD("Load Balancing T{}: C{} (Late)", thread->id, currentCore->id);
 
             return *optimalCore;
         }
 
-        Logger::Debug("Load Balancing T{}: C{} (Early)", thread->id, currentCore->id);
+        LOGD("Load Balancing T{}: C{} (Early)", thread->id, currentCore->id);
 
         return *currentCore;
     }
@@ -116,8 +120,7 @@ namespace skyline::kernel {
         // Scan the queue for the same thread to prevent double insertion
         for (auto &residentThread : core.queue) {
             if (residentThread == thread) {
-                Logger::Error("T{} already exists in C{}", thread->id, core.id);
-                Logger::EmulationContext.Flush();
+                LOGE("T{} already exists in C{}", thread->id, core.id);
             }
         }
         #endif
@@ -274,7 +277,7 @@ namespace skyline::kernel {
                             (*it)->scheduleCondition.notify(); // We need to wake the thread at the front of the queue, if we were at the front previously
                     }
                 } else {
-                    Logger::Warn("T{} was not in C{}'s queue", thread->id, thread->coreId);
+                    LOGW("T{} was not in C{}'s queue", thread->id, thread->coreId);
                 }
             } else {
                 thread->insertThreadOnResume = false;

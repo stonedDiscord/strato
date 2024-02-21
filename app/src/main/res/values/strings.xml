@@ -46,6 +46,14 @@
     <string name="import_keys_invalid_keys">The keys you tried to import are invalid</string>
     <string name="import_keys_delete_previous_failed">Failed to delete the currently installed keys</string>
     <string name="import_keys_move_failed">Failed to move the keys to the internal directory</string>
+    <!-- Settings - Firmware -->
+    <string name="firmware">Firmware</string>
+    <string name="import_firmware_in_progress">Installing firmware</string>
+    <string name="import_firmware_success">Firmware was successfully imported</string>
+    <string name="import_firmware_failure">Firmware installation failed</string>
+    <string name="import_firmware_invalid_contents">The supplied firmware package does not contain a valid firmware</string>
+    <string name="firmware_keys_needed">Valid keys are required for firmware installation</string>
+    <string name="firmware_not_installed">No firmware installed</string>
     <!-- Settings - Appearance -->
     <string name="appearance">Appearance</string>
     <string name="theme">Theme</string>
@@ -61,6 +69,7 @@
     <string name="select_action_desc_off">Game information will only be shown on long-clicking a game</string>
     <string name="filter_invalid_files_desc_off">Show files that have been parsed as invalid</string>
     <string name="filter_invalid_files_desc_on">Hide files that have been parsed as invalid</string>
+    <string name="filter_invalid_files">Hide Invalid Files</string>
     <!-- Settings - Game -->
     <string name="game">Game</string>
     <string name="use_custom_settings">Enable Custom Settings</string>
@@ -82,6 +91,7 @@
     <string name="username">Username</string>
     <string name="username_default" translatable="false">@string/app_name</string>
     <string name="profile_picture">Profile Picture</string>
+    <string name="profile_picture_not_selected">No picture selected</string>
     <string name="system_language">System Language</string>
     <string name="system_region">System Region</string>
     <string name="internet">The system will be able to use internet</string>
@@ -290,12 +300,17 @@
     <string name="expand_button_title" tools:override="true">Expand</string>
     <string name="undo">Undo</string>
     <string name="per_game_settings_active_message">Per-game settings are active</string>
+    <string name="save_data_manager">Manage save data</string>
+    <string name="save_data_found">Save data found. What would you like to do?</string>
+    <string name="save_data_not_found">No save data found. What would you like to do?</string>
     <string name="delete_save_confirmation_message">Are you sure you want to delete this save?</string>
     <string name="action_irreversible">This action is irreversible</string>
     <string name="yes">Yes</string>
     <string name="no">No</string>
     <string name="save_file_imported_ok">The save file was imported successfully</string>
     <string name="save_file_invalid_zip_structure">Invalid Zip directory structure: the first subfolder name must be the Title ID of the game.</string>
+    <string name="save_file_share">Share save file</string>
+    <string name="global_save_data_zip_name">Strato save data</string>
     <string name="game_crash">The game has crashed</string>
     <string name="game_crash_message">A fatal error occurred. Check the log for details.</string>
 </resources>
